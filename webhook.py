@@ -188,15 +188,7 @@ def webhook_handler():
     sns_payload = json.loads(request.data.decode('utf-8'))
     sns_message = json.loads(sns_payload['Message'])
     drain_instance_from_elb_target_groups(sns_message['region'], sns_message['detail']['instance-id'])
-
-    return make_response(jsonify(
-        {
-            'status': 'ok'
-        }
-    ), 200)
-
-
-    #return send_slack_notification(sns_message)
+    return send_slack_notification(sns_message)
 
 
 if __name__ == '__main__':
