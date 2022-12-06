@@ -5,6 +5,7 @@ import argparse
 import yaml
 import requests
 import boto3
+from requests.auth import HTTPBasicAuth
 from flask import Flask, request, jsonify, make_response
 
 
@@ -54,6 +55,28 @@ if 'url' in config['slack']:
     slack_url = config['slack']['url'] + '/' + config['slack']['token']
 else:
     slack_url = 'https://slack.com/api/chat.postMessage'
+
+if 'jenkins' in config:
+    if 'url' not in config['jenkins']:
+        print("'url' not found in 'jenkins' section of config")
+        sys.exit(1)
+
+    if 'job_endpoint' not in config['jenkins']:
+        print("'job_endpoint' not found in 'jenkins' section of config")
+        sys.exit(1)
+
+    if 'username' not in config['jenkins']:
+        print("'username' not found in 'jenkins' section of config")
+        sys.exit(1)
+
+    if 'password' not in config['jenkins']:
+        print("'password' not found in 'jenkins' section of config")
+        sys.exit(1)
+
+if 'drain_target_groups' in config and config['drain_target_groups']:
+    drain_target_groups = True
+else:
+    drain_target_groups = False
 
 slack_token = config['slack']['token']
 slack_channel = config['slack']['channel']
@@ -109,6 +132,52 @@ def drain_instance_from_elb_target_groups(region, instance_id):
                     },
                 ]
             )
+
+
+def get_ec2_resource(region):
+    return boto3.resource(
+        'ec2',
+        region_name=region
+    )
+
+
+def get_ec2_instance(region, instance_id):
+    try:
+        ec2 = get_ec2_resource(region)
+        return ec2.Instance(instance_id)
+    except Exception as e:
+        return None
+
+
+def get_jenkins_crumb():
+    jenkins_url = config['jenkins']['url']
+
+    crumb_resp = requests.get(
+        f'{jenkins_url}/crumbIssuer/api/json',
+        auth=HTTPBasicAuth(config['jenkins']['username'], config['jenkins']['password'])
+    )
+
+    crumb_resp = crumb_resp.json()
+
+    return crumb_resp['crumb']
+
+
+def run_jenkins_job(region, instance_id):
+    ec_instance = get_ec2_instance(region, instance_id)
+    jenkins_url = config['jenkins']['url']
+    jenkins_job_endpoint = config['jenkins']['job_endpoint']
+    jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}' + ec_instance.private_ip_address
+
+    job_resp = requests.post(
+        jenkins_job_url,
+        auth=HTTPBasicAuth(config['jenkins']['username'], config['jenkins']['password']),
+        headers={"Jenkins-Crumb": get_jenkins_crumb()}
+    )
+
+    if job_resp.status_code != 201:
+        raise Exception(f'Failed to invoke Jenkins job: {jenkins_job_url}')
+    else:
+        print(f'Jenkins job invoked successfully: {jenkins_job_url}')
 
 
 def send_slack_notification(sns_message):
@@ -187,7 +256,15 @@ def ping():
 def webhook_handler():
     sns_payload = json.loads(request.data.decode('utf-8'))
     sns_message = json.loads(sns_payload['Message'])
-    drain_instance_from_elb_target_groups(sns_message['region'], sns_message['detail']['instance-id'])
+    region = sns_message['region']
+    instance_id = sns_message['detail']['instance-id']
+
+    if 'jenkins' in config:
+        run_jenkins_job(region, instance_id)
+
+    if drain_target_groups:
+        drain_instance_from_elb_target_groups(region, instance_id)
+
     return send_slack_notification(sns_message)
 
 
