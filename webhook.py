@@ -183,19 +183,22 @@ def run_jenkins_job(region, instance_id):
     jenkins_url = config['jenkins']['url']
     jenkins_job_endpoint = config['jenkins']['job_endpoint']
 
-    if ec2_instance is not None and ec2_instance.private_ip_address is not None:
-        jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}' + ec2_instance.private_ip_address
+    if ec2_instance is not None:
+        try:
+            jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}' + ec2_instance.private_ip_address
 
-        job_resp = requests.post(
-            jenkins_job_url,
-            auth=HTTPBasicAuth(config['jenkins']['username'], config['jenkins']['password']),
-            headers={"Jenkins-Crumb": get_jenkins_crumb()}
-        )
+            job_resp = requests.post(
+                jenkins_job_url,
+                auth=HTTPBasicAuth(config['jenkins']['username'], config['jenkins']['password']),
+                headers={"Jenkins-Crumb": get_jenkins_crumb()}
+            )
 
-        if job_resp.status_code != 201:
-            raise Exception(f'Failed to invoke Jenkins job: {jenkins_job_url}')
-        else:
-            print(f'Jenkins job invoked successfully: {jenkins_job_url}')
+            if job_resp.status_code != 201:
+                raise Exception(f'Failed to invoke Jenkins job: {jenkins_job_url}')
+            else:
+                print(f'Jenkins job invoked successfully: {jenkins_job_url}')
+        except Exception as e:
+            print(f'Unable to invoke Jenkins job: {e}')
 
 
 def send_slack_notification(sns_message):
