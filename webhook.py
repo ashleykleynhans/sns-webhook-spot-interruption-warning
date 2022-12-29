@@ -83,6 +83,13 @@ slack_channel = config['slack']['channel']
 app = Flask(__name__)
 
 
+def get_ec2_client(region):
+    return boto3.client(
+        'ec2',
+        region_name=region
+    )
+
+
 def get_elb_client(region):
     return boto3.client(
         'elbv2',
@@ -149,6 +156,15 @@ def get_ec2_instance(region, instance_id):
         return None
 
 
+def get_spot_request_for_instance_id(region, instance_id):
+    ec2 = get_ec2_client(region)
+    response = ec2.describe_spot_instance_requests()
+
+    for spot_request in response['SpotInstanceRequests']:
+        if spot_request['InstanceId'] == instance_id:
+            return spot_request
+
+
 def get_jenkins_crumb():
     jenkins_url = config['jenkins']['url']
 
@@ -163,28 +179,40 @@ def get_jenkins_crumb():
 
 
 def run_jenkins_job(region, instance_id):
-    ec_instance = get_ec2_instance(region, instance_id)
+    ec2_instance = get_ec2_instance(region, instance_id)
     jenkins_url = config['jenkins']['url']
     jenkins_job_endpoint = config['jenkins']['job_endpoint']
-    jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}' + ec_instance.private_ip_address
 
-    job_resp = requests.post(
-        jenkins_job_url,
-        auth=HTTPBasicAuth(config['jenkins']['username'], config['jenkins']['password']),
-        headers={"Jenkins-Crumb": get_jenkins_crumb()}
-    )
+    if ec2_instance is not None and ec2_instance.private_ip_address is not None:
+        jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}' + ec2_instance.private_ip_address
 
-    if job_resp.status_code != 201:
-        raise Exception(f'Failed to invoke Jenkins job: {jenkins_job_url}')
-    else:
-        print(f'Jenkins job invoked successfully: {jenkins_job_url}')
+        job_resp = requests.post(
+            jenkins_job_url,
+            auth=HTTPBasicAuth(config['jenkins']['username'], config['jenkins']['password']),
+            headers={"Jenkins-Crumb": get_jenkins_crumb()}
+        )
+
+        if job_resp.status_code != 201:
+            raise Exception(f'Failed to invoke Jenkins job: {jenkins_job_url}')
+        else:
+            print(f'Jenkins job invoked successfully: {jenkins_job_url}')
 
 
 def send_slack_notification(sns_message):
     message = ''
 
     for msg_item in sns_message.keys():
-        message += f'{msg_item}: {sns_message[msg_item]}\n'
+        message += f'**{msg_item}**: {sns_message[msg_item]}\n'
+
+    spot_request = get_spot_request_for_instance_id(
+        sns_message['region'],
+        sns_message['detail']['instance-id']
+    )
+
+    reason_code = spot_request['Status']['Code']
+    reason_message = spot_request['Status']['Message']
+    message += f'**reason_code**: {reason_code}\n'
+    message += f'**reason**: {reason_message}'
 
     slack_payload = {
         'attachments': [
