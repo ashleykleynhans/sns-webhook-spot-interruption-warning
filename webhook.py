@@ -290,7 +290,7 @@ def webhook_handler():
     region = sns_message['region']
     instance_id = sns_message['detail']['instance-id']
 
-    if 'jenkins' in config:
+    if 'jenkins' in config and 'regions' in config['jenkins'] and region in config['jenkins']['regions']:
         run_jenkins_job(region, instance_id)
 
     if drain_target_groups:
