@@ -297,11 +297,15 @@ def webhook_handler():
     region = sns_message['region']
     instance_id = sns_message['detail']['instance-id']
 
-    if 'jenkins' in config and 'regions' in config['jenkins'] and region in config['jenkins']['regions']:
-        run_jenkins_job(region, instance_id)
+    # Only run Jenkins job and drain affected instance from load balancer target
+    # group(s) if the notification type is "EC2 Spot Instance Interruption Warning"
+    # (and not "EC2 Instance Rebalance Recommendation" for example).
+    if sns_message['detail-type'] == 'EC2 Spot Instance Interruption Warning':
+        if 'jenkins' in config and 'regions' in config['jenkins'] and region in config['jenkins']['regions']:
+            run_jenkins_job(region, instance_id)
 
-    if drain_target_groups:
-        drain_instance_from_elb_target_groups(region, instance_id)
+        if drain_target_groups:
+            drain_instance_from_elb_target_groups(region, instance_id)
 
     return send_slack_notification(sns_message)
 
