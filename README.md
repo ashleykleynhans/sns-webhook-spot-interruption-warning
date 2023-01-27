@@ -36,7 +36,9 @@ brew upgrade python@3.9
 ---
 slack:
   token: "<SLACK_TOKEN>"
-  channel: aws-sns-alerts
+  channels:
+    us-east-1: aws-alerts-prod
+    us-east-2: aws-alerts-test
 ```
 
 ## AWS SNS Configuration
