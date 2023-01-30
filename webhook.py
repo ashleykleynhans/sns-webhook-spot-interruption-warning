@@ -207,16 +207,17 @@ def send_slack_notification(sns_message):
     for msg_item in sns_message.keys():
         message += f'**{msg_item}**: {sns_message[msg_item]}\n'
 
-    spot_request = get_spot_request_for_instance_id(
-        sns_message['region'],
-        sns_message['detail']['instance-id']
-    )
+    if sns_message['detail-type'] == 'EC2 Spot Instance Interruption Warning':
+        spot_request = get_spot_request_for_instance_id(
+            sns_message['region'],
+            sns_message['detail']['instance-id']
+        )
 
-    if spot_request is not None:
-        reason_code = spot_request['Status']['Code']
-        reason_message = spot_request['Status']['Message']
-        message += f'**reason_code**: {reason_code}\n'
-        message += f'**reason**: {reason_message}'
+        if spot_request is not None:
+            reason_code = spot_request['Status']['Code']
+            reason_message = spot_request['Status']['Message']
+            message += f'**reason_code**: {reason_code}\n'
+            message += f'**reason**: {reason_message}'
 
     slack_channel = slack_channels[sns_message['region']]
 
