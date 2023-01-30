@@ -65,10 +65,6 @@ if 'jenkins' in config:
         print("'url' not found in 'jenkins' section of config")
         sys.exit(1)
 
-    if 'job_endpoint' not in config['jenkins']:
-        print("'job_endpoint' not found in 'jenkins' section of config")
-        sys.exit(1)
-
     if 'username' not in config['jenkins']:
         print("'username' not found in 'jenkins' section of config")
         sys.exit(1)
@@ -77,10 +73,9 @@ if 'jenkins' in config:
         print("'password' not found in 'jenkins' section of config")
         sys.exit(1)
 
-if 'drain_target_groups' in config and config['drain_target_groups']:
-    drain_target_groups = True
-else:
-    drain_target_groups = False
+if 'notification_types' not in config:
+    print("'notification_types' not found config, at least one notification type is required")
+    sys.exit(1)
 
 slack_token = config['slack']['token']
 slack_channels = config['slack']['channels']
@@ -182,14 +177,15 @@ def get_jenkins_crumb():
     return crumb_resp['crumb']
 
 
-def run_jenkins_job(region, instance_id):
+def run_jenkins_job(region, jenkins_job_endpoint, instance_id):
     ec2_instance = get_ec2_instance(region, instance_id)
     jenkins_url = config['jenkins']['url']
-    jenkins_job_endpoint = config['jenkins']['job_endpoint']
+    jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}'
 
     if ec2_instance is not None:
         try:
-            jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}' + ec2_instance.private_ip_address
+            jenkins_job_url = jenkins_job_url.replace('{{ SERVER_IP }}', ec2_instance.private_ip_address)
+            print(f'Jenkins job URL: {jenkins_job_url}')
 
             job_resp = requests.post(
                 jenkins_job_url,
@@ -297,15 +293,16 @@ def webhook_handler():
     region = sns_message['region']
     instance_id = sns_message['detail']['instance-id']
 
-    # Only run Jenkins job and drain affected instance from load balancer target
-    # group(s) if the notification type is "EC2 Spot Instance Interruption Warning"
-    # (and not "EC2 Instance Rebalance Recommendation" for example).
-    if sns_message['detail-type'] == 'EC2 Spot Instance Interruption Warning':
-        if 'jenkins' in config and 'regions' in config['jenkins'] and region in config['jenkins']['regions']:
-            run_jenkins_job(region, instance_id)
+    for notification in config['notification_types']:
+        if sns_message['detail-type'] == notification['detail_type']:
+            if 'drain_target_groups' in notification and notification['drain_target_groups']:
+                drain_instance_from_elb_target_groups(region, instance_id)
 
-        if drain_target_groups:
-            drain_instance_from_elb_target_groups(region, instance_id)
+            if 'jenkins' in notification and 'jobs' in notification['jenkins']:
+                for jenkins_job in notification['jenkins']['jobs']:
+                    if region in jenkins_job['regions']:
+                        print(f'Jenkins job: ')
+                        run_jenkins_job(region, jenkins_job['endpoint_url'], instance_id)
 
     return send_slack_notification(sns_message)
 
