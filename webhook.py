@@ -187,6 +187,15 @@ def run_jenkins_job(region, jenkins_job_endpoint, instance_id):
             jenkins_job_url = jenkins_job_url.replace('{{ SERVER_IP }}', ec2_instance.private_ip_address)
             print(f'Jenkins job URL: {jenkins_job_url}')
 
+            if 'environments' in config:
+                if region in config['environments']:
+                    environment = config['environments'][region]
+                    jenkins_job_url = jenkins_job_url.replace('{{ ENVIRONMENT }}', environment)
+
+            if '{{ ENVIRONMENT }}' in jenkins_job_url:
+                print(f'{{ ENVIRONMENT }} variable was not substituted in {jenkins_job_url}')
+                return
+
             job_resp = requests.post(
                 jenkins_job_url,
                 auth=HTTPBasicAuth(config['jenkins']['username'], config['jenkins']['password']),
@@ -302,7 +311,6 @@ def webhook_handler():
             if 'jenkins' in notification and 'jobs' in notification['jenkins']:
                 for jenkins_job in notification['jenkins']['jobs']:
                     if region in jenkins_job['regions']:
-                        print(f'Jenkins job: ')
                         run_jenkins_job(region, jenkins_job['endpoint_url'], instance_id)
 
     return send_slack_notification(sns_message)
