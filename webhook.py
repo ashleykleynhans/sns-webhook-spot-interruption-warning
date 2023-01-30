@@ -184,17 +184,21 @@ def run_jenkins_job(region, jenkins_job_endpoint, instance_id):
 
     if ec2_instance is not None:
         try:
-            jenkins_job_url = jenkins_job_url.replace('{{ SERVER_IP }}', ec2_instance.private_ip_address)
-            print(f'Jenkins job URL: {jenkins_job_url}')
+            if '{{ SERVER_IP }}' in jenkins_job_url:
+                jenkins_job_url = jenkins_job_url.replace('{{ SERVER_IP }}', ec2_instance.private_ip_address)
 
-            if 'environments' in config:
+            if '{{ INSTANCE_ID }}' in jenkins_job_url:
+                jenkins_job_url = jenkins_job_url.replace('{{ INSTANCE_ID }}', instance_id)
+
+            if '{{ ENVIRONMENT }}' in jenkins_job_url and 'environments' in config:
                 if region in config['environments']:
                     environment = config['environments'][region]
                     jenkins_job_url = jenkins_job_url.replace('{{ ENVIRONMENT }}', environment)
+                else:
+                    print(f'{{ ENVIRONMENT }} variable was not substituted in {jenkins_job_url}')
+                    return
 
-            if '{{ ENVIRONMENT }}' in jenkins_job_url:
-                print(f'{{ ENVIRONMENT }} variable was not substituted in {jenkins_job_url}')
-                return
+            print(f'Jenkins job URL: {jenkins_job_url}')
 
             job_resp = requests.post(
                 jenkins_job_url,
