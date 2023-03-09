@@ -179,8 +179,7 @@ def get_jenkins_crumb():
     return crumb_resp['crumb']
 
 
-def run_jenkins_job(region, jenkins_job_endpoint, instance_id):
-    ec2_instance = get_ec2_instance(region, instance_id)
+def run_jenkins_job(region, jenkins_job_endpoint, instance_id, ec2_instance):
     jenkins_url = config['jenkins']['url']
     jenkins_job_url = f'{jenkins_url}/job/{jenkins_job_endpoint}'
 
@@ -271,41 +270,40 @@ def send_slack_notification(sns_message):
     return jsonify(slack_response)
 
 
-def influxdb_log(message):
+def influxdb_log(message, ec2_instance):
     try:
-        if 'Event' in message and message['Event'] == 'autoscaling:EC2_INSTANCE_TERMINATE' \
-                and 'taken out of service in response to an EC2 health check' in message['Cause']:
+        if 'detail-type' in message and message['detail-type'] == 'EC2 Spot Instance Interruption Warning':
             print('Logging to InfluxDB')
-            asg_name = message['AutoScalingGroupName']
-            asg_name = asg_name.split('-')
-            asg_name.pop()
-            asg_name = ('-').join(asg_name)
 
-            if 'test' in asg_name:
-                influxdb_config = config['influxdb']['test']
-            else:
-                influxdb_config = config['influxdb']['prod']
+            if message['region'] in config['environments']:
+                environment = config['environments'][message['region']]
+                influxdb_config = config['influxdb'][environment]
+                asg_name = ''
 
-            client = InfluxDBClient(
-                url=influxdb_config['url'],
-                token=influxdb_config['token'],
-                org=influxdb_config['org']
-            )
+                for tag in ec2_instance.tags:
+                    if tag['Key'] == 'aws:autoscaling:groupName':
+                        asg_name = tag['Value']
 
-            point = Point('spot_termination') \
-                .tag('availability_zone', message['Details']['Availability Zone']) \
-                .tag('autoscaling_group', asg_name) \
-                .field('count', 1)
+                client = InfluxDBClient(
+                    url=influxdb_config['url'],
+                    token=influxdb_config['token'],
+                    org=influxdb_config['org']
+                )
 
-            write_api = client.write_api(write_options=SYNCHRONOUS)
-            write_api.write(
-                influxdb_config['bucket'],
-                influxdb_config['org'],
-                point,
-                write_precision=WritePrecision.S
-            )
+                point = Point('spot_termination') \
+                    .tag('availability_zone', ec2_instance.placement['AvailabilityZone']) \
+                    .tag('autoscaling_group', asg_name) \
+                    .field('count', 1)
 
-            client.close()
+                write_api = client.write_api(write_options=SYNCHRONOUS)
+                write_api.write(
+                    influxdb_config['bucket'],
+                    influxdb_config['org'],
+                    point,
+                    write_precision=WritePrecision.S
+                )
+
+                client.close()
     except Exception as e:
         print(f'Logging to InfluxDB failed: {e}')
 
@@ -347,6 +345,7 @@ def webhook_handler():
     sns_message = json.loads(sns_payload['Message'])
     region = sns_message['region']
     instance_id = sns_message['detail']['instance-id']
+    instance = get_ec2_instance(region, instance_id)
 
     for notification in config['notification_types']:
         if sns_message['detail-type'] == notification['detail_type']:
@@ -356,9 +355,9 @@ def webhook_handler():
             if 'jenkins' in notification and 'jobs' in notification['jenkins']:
                 for jenkins_job in notification['jenkins']['jobs']:
                     if region in jenkins_job['regions']:
-                        run_jenkins_job(region, jenkins_job['endpoint_url'], instance_id)
+                        run_jenkins_job(region, jenkins_job['endpoint_url'], instance_id, instance)
 
-    influxdb_log(sns_message)
+    influxdb_log(sns_message, instance)
 
     return send_slack_notification(sns_message)
 
