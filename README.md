@@ -1,4 +1,13 @@
-# SNS Webhook receiver to receive EC2 Instance Spot Termination Warnings and drain the affected instances from Load Balancer Target Groups and send Slack Notifications
+# SNS Webhook receiver to receive EC2 Instance Spot Termination Warnings/Rebalance Recommendations
+
+This is an AWS SNS Webhook Receiver that receives SNS notifications
+for EC2 Spot Instance Rebalance Recommendations and EC2 Spot
+Interruption warnings and send notifications to Slack.
+
+It can also optionally drain the affected instances from Load Balancer
+Target Groups, trigger Jenkins jobs to perform specific actions
+(for example removing the affected instance from monitoring systems),
+and log to InfluxDB.
 
 [![Python Version: 3.9](
 https://img.shields.io/badge/Python%20application-v3.9-blue
@@ -39,6 +48,48 @@ slack:
   channels:
     us-east-1: aws-alerts-prod
     us-east-2: aws-alerts-test
+
+jenkins:
+   url: http://jenkins.example.com
+   username: "<JENKINS_USER>"
+   password: "<JENKINS_PASS>"
+
+influxdb:
+   prod:
+      url: http://influxdb-prod.example.com:8086
+      token: "<INFLUXDB_TOKEN>"
+      org: "<INFLUXDB_ORG>"
+      bucket: "<INFLUXDB_BUCKET>"
+   test:
+      url: http://influxdb-test.example.com:8086
+      token: "<INFLUXDB_TOKEN>"
+      org: "<INFLUXDB_ORG>"
+      bucket: "<INFLUXDB_BUCKET>"
+
+environments:
+   us-east-1: prod
+   us-east-2: test
+
+notification_types:
+   - name: ec2-spot-interruption
+     detail_type: "EC2 Spot Instance Interruption Warning"
+     drain_target_groups: true
+     jenkins:
+        jobs:
+           - endpoint_url: remove-host-from-checkmk-prod/buildWithParameters?SERVER_IP={{ SERVER_IP }}
+             regions:
+                - us-east-1
+
+   - name: ec2-rebalance-recommendation
+     detail_type: "EC2 Instance Rebalance Recommendation"
+     drain_target_groups: false
+     jenkins:
+        jobs:
+           - endpoint_url: replace-ec2-instance-{{ ENVIRONMENT }}/buildWithParameters?INSTANCE_ID={{ INSTANCE_ID }}
+             regions:
+                - us-east-1
+                - us-east-2
+
 ```
 
 ## AWS SNS Configuration
