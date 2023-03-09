@@ -272,9 +272,10 @@ def send_slack_notification(sns_message):
 
 def influxdb_log(message, ec2_instance):
     try:
-        if 'detail-type' in message and message['detail-type'] == 'EC2 Spot Instance Interruption Warning':
-            print('Logging to InfluxDB')
+        if 'influxdb' not in config:
+            return
 
+        if 'detail-type' in message and message['detail-type'] == 'EC2 Spot Instance Interruption Warning':
             if message['region'] in config['environments']:
                 environment = config['environments'][message['region']]
                 influxdb_config = config['influxdb'][environment]
@@ -283,6 +284,9 @@ def influxdb_log(message, ec2_instance):
                 for tag in ec2_instance.tags:
                     if tag['Key'] == 'aws:autoscaling:groupName':
                         asg_name = tag['Value']
+
+
+                print('Logging to InfluxDB')
 
                 client = InfluxDBClient(
                     url=influxdb_config['url'],
