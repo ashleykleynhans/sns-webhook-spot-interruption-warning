@@ -3,3 +3,4 @@ venv/*
 .vscode
 .idea
 config.yml
+.DS_Store
