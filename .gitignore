@@ -1,6 +1,9 @@
 zappa_settings.json
 venv/*
+.venv
 .vscode
 .idea
+.coverage
 config.yml
 .DS_Store
+__pycache__

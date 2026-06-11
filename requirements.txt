@@ -5,3 +5,6 @@ awsudo
 awscli
 requests
 setuptools
+pyyaml
+pytest
+pytest-cov

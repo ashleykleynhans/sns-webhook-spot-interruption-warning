@@ -98,12 +98,26 @@ while ngrok is running **(be sure to use the https one)**.
 5. Trigger an SNS event to trigger the notification webhook.
 6. Check your Slack channel that you created for your SNS notifications.
 
+## Running Tests
+
+1. Install the test dependencies:
+```bash
+pip3 install -r requirements.txt
+```
+2. Run the tests with verbose output and coverage report:
+```bash
+pytest -v
+```
+
+Coverage is enabled by default via `pyproject.toml` and will
+display a line-by-line coverage report after the test results.
+
 ## Deploy to AWS Lambda
 
 1. Create a Python 3.12 Virtual Environment:
 ```bash
-python3 -m venv venv/py3.12
-source venv/py3.12/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 2. Upgrade pip.
 ```bash
