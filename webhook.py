@@ -7,8 +7,6 @@ import requests
 import boto3
 from requests.auth import HTTPBasicAuth
 from flask import Flask, request, jsonify, make_response
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
 
 
 def get_args():
@@ -270,48 +268,6 @@ def send_slack_notification(sns_message):
     return jsonify(slack_response)
 
 
-def influxdb_log(message, ec2_instance):
-    try:
-        if 'influxdb' not in config:
-            return
-
-        if 'detail-type' in message and message['detail-type'] == 'EC2 Spot Instance Interruption Warning':
-            if message['region'] in config['environments']:
-                environment = config['environments'][message['region']]
-                influxdb_config = config['influxdb'][environment]
-                asg_name = ''
-
-                for tag in ec2_instance.tags:
-                    if tag['Key'] == 'aws:autoscaling:groupName':
-                        asg_name = tag['Value']
-
-
-                print('Logging to InfluxDB')
-
-                client = InfluxDBClient(
-                    url=influxdb_config['url'],
-                    token=influxdb_config['token'],
-                    org=influxdb_config['org']
-                )
-
-                point = Point('spot_termination') \
-                    .tag('availability_zone', ec2_instance.placement['AvailabilityZone']) \
-                    .tag('autoscaling_group', asg_name) \
-                    .field('count', 1)
-
-                write_api = client.write_api(write_options=SYNCHRONOUS)
-                write_api.write(
-                    influxdb_config['bucket'],
-                    influxdb_config['org'],
-                    point,
-                    write_precision=WritePrecision.S
-                )
-
-                client.close()
-    except Exception as e:
-        print(f'Logging to InfluxDB failed: {e}')
-
-
 @app.errorhandler(404)
 def not_found(error):
     return make_response(jsonify(
@@ -360,8 +316,6 @@ def webhook_handler():
                 for jenkins_job in notification['jenkins']['jobs']:
                     if region in jenkins_job['regions']:
                         run_jenkins_job(region, jenkins_job['endpoint_url'], instance_id, instance)
-
-    influxdb_log(sns_message, instance)
 
     return send_slack_notification(sns_message)
 

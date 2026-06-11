@@ -5,9 +5,8 @@ for EC2 Spot Instance Rebalance Recommendations and EC2 Spot
 Interruption warnings and send notifications to Slack.
 
 It can also optionally drain the affected instances from Load Balancer
-Target Groups, trigger Jenkins jobs to perform specific actions
-(for example removing the affected instance from monitoring systems),
-and log to InfluxDB.
+Target Groups and trigger Jenkins jobs to perform specific actions
+(for example removing the affected instance from monitoring systems).
 
 [![Python Version: 3.12](
 https://img.shields.io/badge/Python%20application-v3.12-blue
@@ -48,18 +47,6 @@ jenkins:
    url: http://jenkins.example.com
    username: "<JENKINS_USER>"
    password: "<JENKINS_PASS>"
-
-influxdb:
-   prod:
-      url: http://influxdb-prod.example.com:8086
-      token: "<INFLUXDB_TOKEN>"
-      org: "<INFLUXDB_ORG>"
-      bucket: "<INFLUXDB_BUCKET>"
-   test:
-      url: http://influxdb-test.example.com:8086
-      token: "<INFLUXDB_TOKEN>"
-      org: "<INFLUXDB_ORG>"
-      bucket: "<INFLUXDB_BUCKET>"
 
 environments:
    us-east-1: prod
